@@ -12,6 +12,10 @@ py outputs/relay.py
 
 O aplicativo também funciona com apenas o arquivo [relay.py](outputs/relay.py). Ele usa a biblioteca padrão do Python.
 
+## Testar com DummyJSON
+
+Importe a coleção de exemplo e envie **Listar produtos** para ver sua primeira resposta. A pasta inclui dez requisições prontas para praticar consultas, escritas simuladas, cabeçalhos e respostas de erro. [Abrir exemplo e instruções](outputs/examples/dummyjson/README.md)
+
 ## Recursos
 
 - Requisições HTTP e HTTPS com métodos personalizados, cabeçalhos, parâmetros e corpos JSON, texto, formulário ou arquivo.

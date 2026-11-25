@@ -1,0 +1,307 @@
+{
+  "format": "relay-http",
+  "version": 1,
+  "roots": [
+    {
+      "id": "dummyjson",
+      "kind": "collection",
+      "name": "DummyJSON",
+      "auth": {
+        "mode": "none"
+      },
+      "env": "env-dummyjson",
+      "children": [
+        {
+          "id": "catalogo",
+          "kind": "folder",
+          "name": "Consultar produtos",
+          "auth": {
+            "mode": "inherit"
+          },
+          "env": "inherit",
+          "children": [
+            {
+              "id": "lista",
+              "kind": "request",
+              "name": "Listar produtos",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "GET",
+              "url": "{{base_url}}/products",
+              "params": [
+                {
+                  "key": "limit",
+                  "value": "{{limite}}",
+                  "enabled": true
+                },
+                {
+                  "key": "skip",
+                  "value": "0",
+                  "enabled": true
+                },
+                {
+                  "key": "select",
+                  "value": "title,price",
+                  "enabled": true
+                }
+              ],
+              "headers": [],
+              "body_kind": "none",
+              "body": "",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "busca",
+              "kind": "request",
+              "name": "Buscar por palavra",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "GET",
+              "url": "{{base_url}}/products/search",
+              "params": [
+                {
+                  "key": "q",
+                  "value": "{{busca}}",
+                  "enabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{limite}}",
+                  "enabled": true
+                },
+                {
+                  "key": "select",
+                  "value": "title,price",
+                  "enabled": true
+                }
+              ],
+              "headers": [],
+              "body_kind": "none",
+              "body": "",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "produto",
+              "kind": "request",
+              "name": "Consultar por ID",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "GET",
+              "url": "{{base_url}}/products/{{produto_id}}",
+              "params": [],
+              "headers": [],
+              "body_kind": "none",
+              "body": "",
+              "form": [],
+              "file": "",
+              "target": ""
+            }
+          ]
+        },
+        {
+          "id": "escrita",
+          "kind": "folder",
+          "name": "Simular alterações",
+          "auth": {
+            "mode": "inherit"
+          },
+          "env": "inherit",
+          "children": [
+            {
+              "id": "criar",
+              "kind": "request",
+              "name": "Criar produto",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "POST",
+              "url": "{{base_url}}/products/add",
+              "params": [],
+              "headers": [],
+              "body_kind": "json",
+              "body": "{\n  \"title\": \"Caderno Relay\",\n  \"price\": 19.9,\n  \"stock\": 10\n}",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "atualizar",
+              "kind": "request",
+              "name": "Atualizar produto",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "PUT",
+              "url": "{{base_url}}/products/{{produto_id}}",
+              "params": [],
+              "headers": [],
+              "body_kind": "json",
+              "body": "{\n  \"title\": \"Caderno revisado\",\n  \"price\": 24.9,\n  \"stock\": 8\n}",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "estoque",
+              "kind": "request",
+              "name": "Alterar apenas o estoque",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "PATCH",
+              "url": "{{base_url}}/products/{{produto_id}}",
+              "params": [],
+              "headers": [],
+              "body_kind": "json",
+              "body": "{\n  \"stock\": 4\n}",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "excluir",
+              "kind": "request",
+              "name": "Excluir produto",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "DELETE",
+              "url": "{{base_url}}/products/{{produto_id}}",
+              "params": [],
+              "headers": [],
+              "body_kind": "none",
+              "body": "",
+              "form": [],
+              "file": "",
+              "target": ""
+            }
+          ]
+        },
+        {
+          "id": "http",
+          "kind": "folder",
+          "name": "Inspecionar HTTP",
+          "auth": {
+            "mode": "inherit"
+          },
+          "env": "inherit",
+          "children": [
+            {
+              "id": "cabecalhos",
+              "kind": "request",
+              "name": "Ler cabeçalhos",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "HEAD",
+              "url": "{{base_url}}/products/{{produto_id}}",
+              "params": [],
+              "headers": [],
+              "body_kind": "none",
+              "body": "",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "preflight",
+              "kind": "request",
+              "name": "Consultar permissão de PATCH (CORS)",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "OPTIONS",
+              "url": "{{base_url}}/products/{{produto_id}}",
+              "params": [],
+              "headers": [
+                {
+                  "key": "Origin",
+                  "value": "https://example.org",
+                  "enabled": true
+                },
+                {
+                  "key": "Access-Control-Request-Method",
+                  "value": "PATCH",
+                  "enabled": true
+                },
+                {
+                  "key": "Access-Control-Request-Headers",
+                  "value": "content-type",
+                  "enabled": true
+                }
+              ],
+              "body_kind": "none",
+              "body": "",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "ausente",
+              "kind": "request",
+              "name": "Consultar ID inexistente (404)",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "GET",
+              "url": "{{base_url}}/products/999999",
+              "params": [],
+              "headers": [],
+              "body_kind": "none",
+              "body": "",
+              "form": [],
+              "file": "",
+              "target": ""
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "environments": [
+    {
+      "id": "env-dummyjson",
+      "name": "DummyJSON",
+      "variables": [
+        {
+          "key": "base_url",
+          "value": "https://dummyjson.com",
+          "secret": false
+        },
+        {
+          "key": "produto_id",
+          "value": "1",
+          "secret": false
+        },
+        {
+          "key": "limite",
+          "value": "5",
+          "secret": false
+        },
+        {
+          "key": "busca",
+          "value": "phone",
+          "secret": false
+        }
+      ]
+    }
+  ],
+  "default_env": "none"
+}
