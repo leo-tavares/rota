@@ -1,4 +1,4 @@
-"""Valida a coleção importada pela interface; --live envia os dez exemplos ao DummyJSON."""
+"""Valida a coleção pela interface. Use --live para enviá-la ao DummyJSON."""
 import argparse
 import json
 from pathlib import Path
@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "outputs"))
 import relay
 
 
-def check_response(request, reply):
+def check_product_response(request, reply):
     assert not reply.error, reply.error
     headers = {key.lower(): value for key, value in reply.headers}
     if request.method == "OPTIONS":
@@ -41,6 +41,77 @@ def check_response(request, reply):
         assert reply.status == 200 and body["id"] == 1 and body["title"]
 
 
+LOGIN = "Entrar com a conta de demonstração"
+PROFILE = "Consultar meu perfil"
+REFRESH = "Renovar a sessão"
+BAD_PASSWORD = "Entrar com senha incorreta"
+ANONYMOUS = "Consultar perfil sem token"
+AUTH_CASES = {
+    LOGIN: ("POST", "/auth/login", 200),
+    PROFILE: ("GET", "/auth/me", 200),
+    REFRESH: ("POST", "/auth/refresh", 200),
+    BAD_PASSWORD: ("POST", "/auth/login", 400),
+    ANONYMOUS: ("GET", "/auth/me", 401),
+}
+
+
+def send(app, request):
+    assert (request.scheme, request.host, request.port) == ("https", "dummyjson.com", None)
+    app.send_button.invoke()
+    deadline = time.monotonic() + relay.HTTP_TIMEOUT + 5
+    while app.jobs and time.monotonic() < deadline:
+        app.root.update()
+        time.sleep(.015)
+    assert not app.jobs, "A interface não concluiu o envio."
+    reply = app.replies[app.selected]
+    print(request.method, request.target, reply.status, flush=True)
+    assert not reply.error, reply.error
+    return reply
+
+
+def check_auth(app, paths, variables, live):
+    assert set(paths) == set(AUTH_CASES)
+    access = variables["access_token"]
+    refresh = variables["refresh_token"]
+    assert all(var["secret"] and var["value"] == "" for var in (access, refresh))
+    # Exercita o mesmo perfil novamente após a renovação.
+    for name in (LOGIN, PROFILE, REFRESH, PROFILE, BAD_PASSWORD, ANONYMOUS):
+        method, target, expected = AUTH_CASES[name]
+        app.select(paths[name][-1]["id"])
+        request = relay.prepare(app.state, app.path)
+        assert (request.method, request.target) == (method, target)
+        assert (request.scheme, request.host, request.port) == ("https", "dummyjson.com", None)
+        headers = {key.lower(): value for key, value in request.headers}
+        assert "cookie" not in headers
+        if name == PROFILE:
+            assert access["value"] and headers.get("authorization") == "Bearer " + access["value"]
+        else:
+            assert "authorization" not in headers
+        if method == "POST":
+            assert headers["content-type"] == "application/json"
+            payload = json.loads(request.body)
+            if name == REFRESH:
+                assert refresh["value"] and payload["refreshToken"] == refresh["value"]
+            else:
+                assert payload["username"] == "emilys"
+                assert bool(payload["password"]) and (payload["password"] == "emilyspass") == (name == LOGIN)
+        if not live:
+            if name in (LOGIN, REFRESH):
+                access["value"], refresh["value"] = f"access-{name}", f"refresh-{name}"
+            continue
+        reply = send(app, request)
+        assert reply.status == expected, f"{name} retornou {reply.status} (esperado {expected})"
+        data = json.loads(relay.body_view(reply).text)
+        if name in (LOGIN, PROFILE):
+            assert data["username"] == "emilys" and data["id"] > 0
+        if name in (LOGIN, REFRESH):
+            for var, key in ((access, "accessToken"), (refresh, "refreshToken")):
+                assert isinstance(data[key], str) and data[key]
+                var["value"] = data[key]
+        if expected >= 400:
+            assert data["message"] and "accessToken" not in data and "refreshToken" not in data
+
+
 def verify(live):
     example = ROOT / "outputs/examples/dummyjson/dummyjson.relay.json"
     with tempfile.TemporaryDirectory() as tmp:
@@ -55,9 +126,11 @@ def verify(live):
             assert collection["name"] == "DummyJSON"
             assert app.state["default_env"] == original_env
             paths = [path for item, path in relay.walk([collection]) if item["kind"] == "request"]
-            assert len(paths) == 10
+            auth_paths = {p[-1]["name"]: p for p in paths if p[-2]["name"] == "Autenticação"}
+            products = [p for p in paths if p[-2]["name"] != "Autenticação"]
+            assert len(paths) == 15 and len(products) == 10
             assert {p[-1]["method"] for p in paths} == {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
-            for path in paths:
+            for path in products:
                 app.select(path[-1]["id"])
                 request = relay.prepare(app.state, app.path)
                 assert (request.scheme, request.host, request.port) == ("https", "dummyjson.com", None)
@@ -67,16 +140,14 @@ def verify(live):
                     assert ("Content-Type", "application/json") in request.headers
                     json.loads(request.body)
                 if live:
-                    app.send_button.invoke()
-                    deadline = time.monotonic() + relay.HTTP_TIMEOUT + 5
-                    while app.jobs and time.monotonic() < deadline:
-                        root.update()
-                        time.sleep(.015)
-                    assert not app.jobs, "A interface não concluiu o envio."
-                    reply = app.replies[app.selected]
-                    print(request.method, request.target, reply.status, reply.error, flush=True)
-                    check_response(request, reply)
-            print("Importação, ambiente herdado e 10 requisições verificados.")
+                    check_product_response(request, send(app, request))
+            env = relay.find_env(app.state, collection["env"])
+            check_auth(app, auth_paths, {v["key"]: v for v in env["variables"]}, live)
+            shared = relay.share_package(app.state, path=[collection])
+            for var in shared["environments"][0]["variables"]:
+                if var["secret"]:
+                    assert var["value"] == ""
+            print("Importação e 15 requisições verificadas, incluindo o perfil após a renovação.")
         finally:
             app.close()
 

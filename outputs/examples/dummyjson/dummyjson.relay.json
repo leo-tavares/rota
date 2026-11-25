@@ -271,6 +271,108 @@
               "target": ""
             }
           ]
+        },
+        {
+          "id": "auth",
+          "kind": "folder",
+          "name": "Autenticação",
+          "auth": {
+            "mode": "bearer",
+            "token": "{{access_token}}"
+          },
+          "env": "inherit",
+          "children": [
+            {
+              "id": "auth-login",
+              "kind": "request",
+              "name": "Entrar com a conta de demonstração",
+              "auth": {
+                "mode": "none"
+              },
+              "env": "inherit",
+              "method": "POST",
+              "url": "{{base_url}}/auth/login",
+              "params": [],
+              "headers": [],
+              "body_kind": "json",
+              "body": "{\n  \"username\": \"emilys\",\n  \"password\": \"emilyspass\",\n  \"expiresInMins\": 30\n}",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "auth-me",
+              "kind": "request",
+              "name": "Consultar meu perfil",
+              "auth": {
+                "mode": "inherit"
+              },
+              "env": "inherit",
+              "method": "GET",
+              "url": "{{base_url}}/auth/me",
+              "params": [],
+              "headers": [],
+              "body_kind": "none",
+              "body": "",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "auth-refresh",
+              "kind": "request",
+              "name": "Renovar a sessão",
+              "auth": {
+                "mode": "none"
+              },
+              "env": "inherit",
+              "method": "POST",
+              "url": "{{base_url}}/auth/refresh",
+              "params": [],
+              "headers": [],
+              "body_kind": "json",
+              "body": "{\n  \"refreshToken\": \"{{refresh_token}}\",\n  \"expiresInMins\": 30\n}",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "auth-login-negado",
+              "kind": "request",
+              "name": "Entrar com senha incorreta",
+              "auth": {
+                "mode": "none"
+              },
+              "env": "inherit",
+              "method": "POST",
+              "url": "{{base_url}}/auth/login",
+              "params": [],
+              "headers": [],
+              "body_kind": "json",
+              "body": "{\n  \"username\": \"emilys\",\n  \"password\": \"senha-incorreta\"\n}",
+              "form": [],
+              "file": "",
+              "target": ""
+            },
+            {
+              "id": "auth-me-anonimo",
+              "kind": "request",
+              "name": "Consultar perfil sem token",
+              "auth": {
+                "mode": "none"
+              },
+              "env": "inherit",
+              "method": "GET",
+              "url": "{{base_url}}/auth/me",
+              "params": [],
+              "headers": [],
+              "body_kind": "none",
+              "body": "",
+              "form": [],
+              "file": "",
+              "target": ""
+            }
+          ]
         }
       ]
     }
@@ -299,6 +401,16 @@
           "key": "busca",
           "value": "phone",
           "secret": false
+        },
+        {
+          "key": "access_token",
+          "value": "",
+          "secret": true
+        },
+        {
+          "key": "refresh_token",
+          "value": "",
+          "secret": true
         }
       ]
     }
