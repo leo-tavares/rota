@@ -130,7 +130,7 @@
               "params": [],
               "headers": [],
               "body_kind": "json",
-              "body": "{\n  \"title\": \"Caderno Relay\",\n  \"price\": 19.9,\n  \"stock\": 10\n}",
+              "body": "{\n  \"title\": \"Caderno Rota\",\n  \"price\": 19.9,\n  \"stock\": 10\n}",
               "form": [],
               "file": "",
               "target": ""

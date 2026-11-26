@@ -1,4 +1,4 @@
-"""Ensaios locais. Executar com python -B work/check_relay.py."""
+"""Ensaios locais. Executar com python -B work/check_rota.py."""
 import copy
 import gzip
 import json
@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE / "outputs"))
-import relay as r
+import rota as r
 
 
 class Echo(BaseHTTPRequestHandler):

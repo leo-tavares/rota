@@ -1,7 +1,7 @@
-# Testar o Relay com DummyJSON
+# Testar o Rota com DummyJSON
 
 1. [Baixe a coleção DummyJSON](https://github.com/leo-tavares/relay-http/raw/refs/heads/main/outputs/examples/dummyjson/dummyjson.relay.json). Se você clonou o repositório, use o arquivo `dummyjson.relay.json` desta pasta.
-2. No Relay, clique em **Importar** e selecione o arquivo. A coleção **DummyJSON** já vem vinculada ao ambiente de mesmo nome.
+2. No Rota, clique em **Importar** e selecione o arquivo. A coleção **DummyJSON** já vem vinculada ao ambiente de mesmo nome.
 3. Abra **DummyJSON → Consultar produtos → Listar produtos** e clique em **Enviar**. O resultado esperado é `200 OK`, com cinco produtos em `products`. Na aba **Parâmetros**, troque `limit` por `2` e envie novamente para comparar.
 
 ## Produtos e HTTP
@@ -13,7 +13,7 @@ Os dez exemplos de produtos podem ser executados isoladamente. O DummyJSON simul
 | Consultar produtos | GET · Listar produtos | `200`. A lista traz `id`, `title` e `price`, além de metadados de paginação. |
 | Consultar produtos | GET · Buscar por palavra | `200`. O parâmetro `q` usa o termo `phone`. Altere o termo para comparar os resultados. |
 | Consultar produtos | GET · Consultar por ID | `200`. O JSON contém os detalhes do produto escolhido. |
-| Simular alterações | POST · Criar produto | `201`. A resposta traz um novo `id` e o título `Caderno Relay`. |
+| Simular alterações | POST · Criar produto | `201`. A resposta traz um novo `id` e o título `Caderno Rota`. |
 | Simular alterações | PUT · Atualizar produto | `200`. Compare o título, o preço e o estoque retornados com o JSON da aba **Corpo**. |
 | Simular alterações | PATCH · Alterar apenas o estoque | `200`. A resposta traz `stock` igual a `4`. |
 | Simular alterações | DELETE · Excluir produto | `200`. Confira `isDeleted` igual a `true` e a data em `deletedOn`. |

@@ -8,7 +8,7 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "outputs"))
-import relay as r
+import rota as r
 
 
 def reply(mime, data, encoding="", truncated=False):

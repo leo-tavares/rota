@@ -1,4 +1,4 @@
-"""Relay · cliente HTTP desktop. Execute com Python 3.10+ e Tkinter.
+"""Rota · cliente HTTP para desenvolvedores. Execute com Python 3.10+ e Tkinter.
 
 O tema visual está em Theme e em configure_styles(). O espaço de trabalho
 fica em %LOCALAPPDATA%/RelayHTTP. O formato de intercâmbio é JSON versão 1.
@@ -34,8 +34,21 @@ from urllib.parse import quote, urlencode, urlsplit
 from xml.parsers import expat
 
 
-APP = "Relay"
+APP = "Rota"
+# Identificadores de disco mantidos para ler dados e coleções do Relay.
+WORKSPACE_DIR = "RelayHTTP"
+WORKSPACE_FORMAT = "relay-dpapi"
 FORMAT = "relay-http"
+APP_ICON = (
+    "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABLklEQVR42mNgGGyAMzPc"
+    "FojXAvFrIP5PJfwaaqYtIctnUtFSXHjmQFqO3RHQYP9PZ2yL7IC11DRctCTxv93sVjAG"
+    "sXGoW4vsAKolOItpDf+nvb/8f87XG2AMYoPEsCVMZAdQzefIliM7AltIUN0BoCBHtxy"
+    "GQXLD3wEDHgUkJkLaOACEdbrL4A4AsXGpo5kDvJZPgDtArbWQvg5wWdiNEv/SVWn0c"
+    "wC65SA+PvVUdQCpllPVAeRYTtABivU5/4vPbQFnIxAGsUFi1LIcrwNAFuEqUJAdQYn"
+    "leB0A8i3MQlCWAmGYgyov7wRnLeSsRo7leB0AswxkCba8jY7JsZxqDiDXcoqjAITxF"
+    "TJ0SYSUYrxNMmKzISV9BZo1SonEawdPs3zAOyaDoms2KDqnAwEAexnLjypHt8YAAAAA"
+    "SUVORK5CYII="
+)
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT")
 AUTH = {"inherit": "Herdar", "none": "Sem autenticação", "bearer": "Bearer token", "basic": "Basic Auth"}
 BODIES = {"none": "Sem corpo", "json": "JSON", "text": "Texto", "form": "Formulário", "file": "Arquivo"}
@@ -211,7 +224,7 @@ def read_json(path):
 def write_json(path, data):
     path = Path(path)
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                     prefix=".relay-", suffix=".tmp", delete=False) as f:
+                                     prefix=".rota-", suffix=".tmp", delete=False) as f:
         tmp = Path(f.name)
         try:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -269,10 +282,10 @@ class Workspace:
                 fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
             self.lock.close()
-            raise ValueError("O espaço de trabalho já está aberto em outra instância do Relay.") from exc
+            raise ValueError(f"O espaço de trabalho já está aberto em outra instância do {APP}.") from exc
         try:
             self.state = read_json(self.path) if self.path.exists() else initial_state()
-            if isinstance(self.state, dict) and self.state.get("format") == "relay-dpapi":
+            if isinstance(self.state, dict) and self.state.get("format") == WORKSPACE_FORMAT:
                 need(os.name == "nt", "Abra este espaço de trabalho com a conta Windows que o criou.")
                 protected = base64.b64decode(self.state["data"], validate=True)
                 self.state = json.loads(windows_protect(protected, decrypt=True))
@@ -285,7 +298,7 @@ class Workspace:
         payload = self.state
         if os.name == "nt":
             raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
-            payload = dict(format="relay-dpapi", data=base64.b64encode(windows_protect(raw)).decode("ascii"))
+            payload = dict(format=WORKSPACE_FORMAT, data=base64.b64encode(windows_protect(raw)).decode("ascii"))
         write_json(self.path, payload)
 
     def close(self):
@@ -326,7 +339,7 @@ def share_package(state, *, path=(), environment=None, secrets=False):
 
 
 def import_package(state, package, parent_path=()):
-    need(isinstance(package, dict) and package.get("format") == FORMAT, "Selecione um arquivo JSON exportado pelo Relay.")
+    need(isinstance(package, dict) and package.get("format") == FORMAT, f"Selecione um arquivo JSON exportado pelo {APP}.")
     incoming = copy.deepcopy(package)
     validate(incoming, fragment=True)
     need(incoming["roots"] or incoming["environments"], "O arquivo está vazio.")
@@ -475,7 +488,7 @@ def prepare(state, path):
             raise ValueError("Caractere incompatível com HTTP/1.1 no cabeçalho " + k) from exc
     if method == "CONNECT" and "host" not in names:
         headers.append(("Host", target))
-    need("transfer-encoding" not in names, "O Relay calcula o enquadramento do corpo. Remova Transfer-Encoding.")
+    need("transfer-encoding" not in names, f"O {APP} calcula o enquadramento do corpo. Remova Transfer-Encoding.")
     return Prepared(method, parts.scheme, host, port, target, headers, body, file)
 
 
@@ -1124,7 +1137,9 @@ class App:
         self.env_window = None
         self.status = tk.StringVar(root, "Salvo localmente")
         configure_styles(root)
-        root.title("Relay · Cliente HTTP")
+        root.title(f"{APP} · Cliente HTTP")
+        self.brand_icon = tk.PhotoImage(master=root, data=APP_ICON)
+        root.iconphoto(True, self.brand_icon)
         root.configure(bg=Theme.bg)
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         root.geometry(f"{min(1210, sw-30)}x{min(820, sh-90)}")
@@ -1206,10 +1221,7 @@ class App:
         side.rowconfigure(3, weight=1)
         brand = frame(side, t.nav)
         brand.grid(row=0, column=0, sticky="ew", padx=18, pady=(19, 20))
-        mark = tk.Canvas(brand, width=31, height=32, bg=t.nav, highlightthickness=0)
-        mark.pack(side="left")
-        mark.create_polygon(1, 16, 12, 3, 21, 3, 10, 16, fill=t.mint, outline="")
-        mark.create_polygon(10, 29, 21, 16, 12, 16, 23, 3, 31, 3, 20, 16, 29, 16, 18, 29, fill=t.mint, outline="")
+        tk.Label(brand, image=self.brand_icon, bg=t.nav, bd=0).pack(side="left")
         label(brand, APP, 23, t.nav_text, bold=True).pack(side="left", padx=9)
         head = frame(side, t.nav)
         head.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 9))
@@ -1641,7 +1653,7 @@ class App:
         job = self.jobs[key] = Job()
         def run():
             self.events.put((key, job, perform(prepared, job)))
-        threading.Thread(target=run, daemon=True, name="relay-http").start()
+        threading.Thread(target=run, daemon=True, name="rota-http").start()
         self.draw_response()
 
     def remember(self, key, reply):
@@ -1772,9 +1784,9 @@ class App:
         label(box, "Revise a URL e o corpo antes de compartilhar. Esses campos são copiados integralmente.",
               9, Theme.muted, wraplength=395, justify="left").pack(anchor="w")
         def save_as():
-            clean_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", source["name"]).strip(" .")[:100] or "relay"
+            clean_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", source["name"]).strip(" .")[:100] or APP.lower()
             filename = filedialog.asksaveasfilename(parent=win, title="Salvar arquivo de compartilhamento",
-                       initialfile=clean_name + ".relay.json", defaultextension=".json", filetypes=[("Arquivo JSON", "*.json")])
+                       initialfile=clean_name + ".rota.json", defaultextension=".json", filetypes=[("Arquivo JSON", "*.json")])
             if not filename:
                 return
             try:
@@ -1790,7 +1802,7 @@ class App:
         place_window(win, parent, 460, 220)
 
     def import_file(self):
-        filename = filedialog.askopenfilename(parent=self.root, title="Importar do Relay",
+        filename = filedialog.askopenfilename(parent=self.root, title=f"Importar do {APP}",
                                               filetypes=[("Arquivo JSON", "*.json"), ("Todos", "*.*")])
         if not filename:
             return
@@ -1815,7 +1827,7 @@ class EnvironmentWindow:
     def __init__(self, app, selected):
         self.app = app
         self.envs = app.state["environments"]
-        self.win = modal(app.root, "Ambientes · Relay")
+        self.win = modal(app.root, f"Ambientes · {APP}")
         self.win.protocol("WM_DELETE_WINDOW", self.close)
         self.win.bind("<Escape>", lambda _: self.close())
         self.win.minsize(560, 310)
@@ -1910,10 +1922,11 @@ def main():
     root = tk.Tk()
     root.withdraw()
     base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share")
+    directory = base / WORKSPACE_DIR
     try:
-        store = Workspace(base / "RelayHTTP")
+        store = Workspace(directory)
     except (ValueError, OSError, TypeError, KeyError, RecursionError) as exc:
-        messagebox.showerror(APP, f"Não foi possível abrir o espaço de trabalho.\n{base / 'RelayHTTP'}\n\n{exc}", parent=root)
+        messagebox.showerror(APP, f"Não foi possível abrir o espaço de trabalho.\n{directory}\n\n{exc}", parent=root)
         root.destroy()
         return
     App(root, store)

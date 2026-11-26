@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "outputs"))
-import relay
+import rota
 
 
 def check_product_response(request, reply):
@@ -23,7 +23,7 @@ def check_product_response(request, reply):
     if request.method == "HEAD":
         assert reply.status == 200 and not reply.data and "content-type" in headers
         return
-    body = json.loads(relay.body_view(reply).text)
+    body = json.loads(rota.body_view(reply).text)
     if request.target.endswith("/999999"):
         assert reply.status == 404 and body["message"]
     elif "?" in request.target:
@@ -58,7 +58,7 @@ AUTH_CASES = {
 def send(app, request):
     assert (request.scheme, request.host, request.port) == ("https", "dummyjson.com", None)
     app.send_button.invoke()
-    deadline = time.monotonic() + relay.HTTP_TIMEOUT + 5
+    deadline = time.monotonic() + rota.HTTP_TIMEOUT + 5
     while app.jobs and time.monotonic() < deadline:
         app.root.update()
         time.sleep(.015)
@@ -78,7 +78,7 @@ def check_auth(app, paths, variables, live):
     for name in (LOGIN, PROFILE, REFRESH, PROFILE, BAD_PASSWORD, ANONYMOUS):
         method, target, expected = AUTH_CASES[name]
         app.select(paths[name][-1]["id"])
-        request = relay.prepare(app.state, app.path)
+        request = rota.prepare(app.state, app.path)
         assert (request.method, request.target) == (method, target)
         assert (request.scheme, request.host, request.port) == ("https", "dummyjson.com", None)
         headers = {key.lower(): value for key, value in request.headers}
@@ -101,7 +101,7 @@ def check_auth(app, paths, variables, live):
             continue
         reply = send(app, request)
         assert reply.status == expected, f"{name} retornou {reply.status} (esperado {expected})"
-        data = json.loads(relay.body_view(reply).text)
+        data = json.loads(rota.body_view(reply).text)
         if name in (LOGIN, PROFILE):
             assert data["username"] == "emilys" and data["id"] > 0
         if name in (LOGIN, REFRESH):
@@ -117,22 +117,22 @@ def verify(live):
     with tempfile.TemporaryDirectory() as tmp:
         root = tk.Tk()
         root.withdraw()
-        app = relay.App(root, relay.Workspace(Path(tmp)))
+        app = rota.App(root, rota.Workspace(Path(tmp)))
         original_env = app.state["default_env"]
         try:
-            with patch.object(relay.filedialog, "askopenfilename", return_value=str(example)):
+            with patch.object(rota.filedialog, "askopenfilename", return_value=str(example)):
                 app.import_file()
             collection = app.path[-1]
             assert collection["name"] == "DummyJSON"
             assert app.state["default_env"] == original_env
-            paths = [path for item, path in relay.walk([collection]) if item["kind"] == "request"]
+            paths = [path for item, path in rota.walk([collection]) if item["kind"] == "request"]
             auth_paths = {p[-1]["name"]: p for p in paths if p[-2]["name"] == "Autenticação"}
             products = [p for p in paths if p[-2]["name"] != "Autenticação"]
             assert len(paths) == 15 and len(products) == 10
             assert {p[-1]["method"] for p in paths} == {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
             for path in products:
                 app.select(path[-1]["id"])
-                request = relay.prepare(app.state, app.path)
+                request = rota.prepare(app.state, app.path)
                 assert (request.scheme, request.host, request.port) == ("https", "dummyjson.com", None)
                 assert request.target.startswith("/products") and "{" not in request.target
                 assert all(k.lower() not in {"authorization", "cookie"} for k, _ in request.headers)
@@ -141,9 +141,9 @@ def verify(live):
                     json.loads(request.body)
                 if live:
                     check_product_response(request, send(app, request))
-            env = relay.find_env(app.state, collection["env"])
+            env = rota.find_env(app.state, collection["env"])
             check_auth(app, auth_paths, {v["key"]: v for v in env["variables"]}, live)
-            shared = relay.share_package(app.state, path=[collection])
+            shared = rota.share_package(app.state, path=[collection])
             for var in shared["environments"][0]["variables"]:
                 if var["secret"]:
                     assert var["value"] == ""

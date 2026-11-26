@@ -1,10 +1,10 @@
-# Relay
+# Rota
 
 Cliente HTTP de desktop para desenvolvedores. A interface é em português do Brasil. Responda de forma concisa e objetiva e aprofunde quando solicitado.
 
 ## Executar e localizar o código
 
-O aplicativo distribuído é um único script, `relay.py`, com Python 3.10+ e Tkinter. A plataforma inicial é Windows 11. Na pasta do script, execute `py relay.py`. A aplicação usa a biblioteca padrão.
+O aplicativo distribuído é um único script, `rota.py`, com Python 3.10+ e Tkinter. A plataforma inicial é Windows 11. Na pasta do script, execute `py rota.py`. A aplicação usa a biblioteca padrão.
 
 Na área de desenvolvimento, o script e este guia ficam em `outputs/`. O diretório irmão `work/` contém os testes e as prévias de desenvolvimento.
 
@@ -28,7 +28,7 @@ Na área de desenvolvimento, o script e este guia ficam em `outputs/`. O diretó
 
 ## Dados e compatibilidade
 
-O espaço de trabalho usa `%LOCALAPPDATA%/RelayHTTP/workspace.json`, protegido pela DPAPI da conta Windows. A gravação é atômica. Os arquivos de compartilhamento são JSON portável. Preserve as referências herdadas ao exportar uma subárvore, a opção de incluir segredos e a remarcação de identificadores durante a importação. A URL e o corpo textual são exportados como escritos.
+O espaço de trabalho usa `%LOCALAPPDATA%/RelayHTTP/workspace.json`, protegido pela DPAPI da conta Windows. A gravação é atômica. Os identificadores de dados `relay-dpapi` e `relay-http` preservam a compatibilidade com espaços de trabalho e coleções do Relay. Os arquivos de compartilhamento são JSON portável. Preserve as referências herdadas ao exportar uma subárvore, a opção de incluir segredos e a remarcação de identificadores durante a importação. A URL e o corpo textual são exportados como escritos.
 
 As respostas recentes ficam em memória. Mudanças de visualização não devem alterar os bytes capturados, as requisições salvas ou os arquivos de compartilhamento.
 
@@ -38,10 +38,10 @@ Execute estes comandos na pasta que contém `outputs/` e `work/`.
 
 ```powershell
 py -B work/check_views.py
-py -B work/check_relay.py
+py -B work/check_rota.py
 ```
 
-O primeiro comando testa formatos, charsets, compressão e limites sem rede. O segundo usa HTTP e HTTPS em loopback, um espaço de trabalho temporário e uma janela Tk para testar o fluxo de envio, visualização, compartilhamento e persistência. O teste de TLS usa o OpenSSL do Git for Windows no caminho configurado em `work/check_relay.py`.
+O primeiro comando testa formatos, charsets, compressão e limites sem rede. O segundo usa HTTP e HTTPS em loopback, um espaço de trabalho temporário e uma janela Tk para testar o fluxo de envio, visualização, compartilhamento e persistência. O teste de TLS usa o OpenSSL do Git for Windows no caminho configurado em `work/check_rota.py`.
 
 Para verificar uma mudança de interface, envie uma requisição pelo botão **Enviar**, alterne entre **Corpo** e **Cabeçalhos**, escolha um formato manual e confira **Copiar**. Para um novo formato, cubra também um exemplo inválido ou truncado.
 
