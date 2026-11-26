@@ -113,7 +113,7 @@ def check_auth(app, paths, variables, live):
 
 
 def verify(live):
-    example = ROOT / "outputs/examples/dummyjson/dummyjson.relay.json"
+    example = ROOT / "outputs/examples/dummyjson/dummyjson.rota.json"
     with tempfile.TemporaryDirectory() as tmp:
         root = tk.Tk()
         root.withdraw()

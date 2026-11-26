@@ -1,6 +1,6 @@
 # Testar o Rota com DummyJSON
 
-1. [Baixe a coleção DummyJSON](https://github.com/leo-tavares/relay-http/raw/refs/heads/main/outputs/examples/dummyjson/dummyjson.relay.json). Se você clonou o repositório, use o arquivo `dummyjson.relay.json` desta pasta.
+1. [Baixe a coleção DummyJSON](https://github.com/leo-tavares/rota/raw/refs/heads/main/outputs/examples/dummyjson/dummyjson.rota.json). Se você clonou o repositório, use o arquivo `dummyjson.rota.json` desta pasta.
 2. No Rota, clique em **Importar** e selecione o arquivo. A coleção **DummyJSON** já vem vinculada ao ambiente de mesmo nome.
 3. Abra **DummyJSON → Consultar produtos → Listar produtos** e clique em **Enviar**. O resultado esperado é `200 OK`, com cinco produtos em `products`. Na aba **Parâmetros**, troque `limit` por `2` e envie novamente para comparar.
 
