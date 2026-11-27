@@ -3,6 +3,8 @@ import copy
 import gzip
 import json
 import os
+import select
+import socket
 import ssl
 import subprocess
 import sys
@@ -10,9 +12,11 @@ import tempfile
 import threading
 import time
 import tkinter as tk
+from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE / "outputs"))
@@ -29,7 +33,8 @@ class Echo(BaseHTTPRequestHandler):
         body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
         result = dict(method=self.command, url=self.path, auth=self.headers.get("Authorization"),
                       tags=self.headers.get_all("X-Tag"), body=body.hex(),
-                      type=self.headers.get("Content-Type"), host=self.headers.get("Host"))
+                      type=self.headers.get("Content-Type"), host=self.headers.get("Host"),
+                      proxy_auth_present="Proxy-Authorization" in self.headers)
         payload = json.dumps(result).encode()
         content_type = "application/json; charset=utf-8"
         if self.path == "/table":
@@ -90,6 +95,108 @@ def require_error(fn, contains):
         assert contains in str(exc), exc
     else:
         raise AssertionError(contains)
+
+
+def check_proxy(temp, http, https):
+    seen = []
+    class LocalProxy(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def allowed(self):
+            seen.append((self.command, self.path, self.headers.get("Host"), self.headers.get("Authorization")))
+            if self.headers.get("Proxy-Authorization") == "Basic YTpi":
+                return True
+            self.send_error(407)
+            return False
+
+        def do_POST(self):
+            if self.allowed():
+                url = urlsplit(self.path)
+                assert url.netloc == f"127.0.0.1:{http.server_port}"
+                target = url.path + ("?" + url.query if url.query else "")
+                forwarded = {k: v for k, v in self.headers.items() if k.lower() != "proxy-authorization"}
+                body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                # Este proxy de teste só encaminha ao servidor de loopback criado pelo ensaio.
+                origin = HTTPConnection("127.0.0.1", http.server_port, timeout=3)
+                try:
+                    origin.request("POST", target, body, forwarded)
+                    with origin.getresponse() as reply:
+                        data = reply.read()
+                        self.send_response(reply.status)
+                        self.send_header("Content-Length", str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+                finally:
+                    origin.close()
+
+        def do_CONNECT(self):
+            if not self.allowed():
+                return
+            assert self.path in (f"localhost:{https.server_port}", f"name-mismatch.invalid:{https.server_port}")
+            with socket.create_connection(("127.0.0.1", https.server_port), timeout=3) as origin:
+                self.send_response(200)
+                self.end_headers()
+                peers = (self.connection, origin)
+                while ready := select.select(peers, [], [], 5)[0]:
+                    for source in ready:
+                        chunk = source.recv(65536)
+                        if not chunk:
+                            return
+                        (origin if source is self.connection else self.connection).sendall(chunk)
+
+    proxy = Server(("127.0.0.1", 0), LocalProxy)
+    threading.Thread(target=proxy.serve_forever, daemon=True).start()
+    try:
+        state = r.initial_state()
+        path = r.path_for(state, state["selected"])
+        n = path[-1]
+        n.update(method="POST", url=f"http://127.0.0.1:{http.server_port}/proxy?q=1",
+                 body_kind="text", body="Rota", auth={"mode":"bearer", "token":"api-test"})
+        settings = state["proxy"] = dict(r.PROXY_DEFAULTS, enabled=True, host="127.0.0.1",
+                port=str(proxy.server_port), authenticate=True, username="a", password="b")
+
+        def run():
+            return r.perform(r.prepare(state, path), r.Job())
+
+        body = json.loads(run().data)
+        assert body["url"] == "/proxy?q=1" and body["body"] == b"Rota".hex()
+        assert not body["proxy_auth_present"] and body["auth"] == "Bearer api-test"
+        assert seen[-1] == ("POST", n["url"], f"127.0.0.1:{http.server_port}", "Bearer api-test")
+        settings["password"] = "incorrect"
+        assert run().status == 407
+        n["url"] = f"https://localhost:{https.server_port}/private-api"
+        assert "407" in run().error
+        settings["password"] = "b"
+        assert "CERTIFICATE_VERIFY_FAILED" in run().error
+        with patch.dict(os.environ, {"SSL_CERT_FILE": str(temp/"cert.pem")}):
+            body = json.loads(run().data)
+        target = f"localhost:{https.server_port}"
+        assert seen[-1] == ("CONNECT", target, target, None)
+        assert body["url"] == "/private-api" and body["auth"] == "Bearer api-test"
+        assert not body["proxy_auth_present"] and body["host"] == target
+        with patch.dict(os.environ, {"SSL_CERT_FILE": str(temp/"cert.pem")}):
+            n["url"] = f"https://name-mismatch.invalid:{https.server_port}/"
+            assert "CERTIFICATE_VERIFY_FAILED" in run().error
+        settings["bypass"] = "127.0.0.1, *.internal.test"
+        sent = len(seen)
+        n["url"] = f"http://127.0.0.1:{http.server_port}/direct"
+        assert not json.loads(run().data)["proxy_auth_present"] and len(seen) == sent
+        rule = r.configured_proxy(settings)
+        assert rule.bypasses("Dev.Internal.Test.") and not rule.bypasses("notinternal.test")
+        assert not rule.bypasses("internal.test.evil")
+        settings["enabled"] = False
+        settings["bypass"] = ""
+        assert json.loads(run().data)["url"] == "/direct" and len(seen) == sent
+        pack = r.share_package(state, path=path, secrets=True)
+        assert "proxy" not in pack
+        pack["proxy"] = dict(settings, enabled=True)
+        r.import_package(state, pack)
+        assert state["proxy"] == settings
+    finally:
+        proxy.shutdown()
+        proxy.server_close()
+    print("OK proxy HTTP, Basic, CONNECT com TLS, 407, exceções e sigilo")
 
 
 def core(temp, http, https):
@@ -198,6 +305,33 @@ def ui(temp, http):
     root.report_callback_exception = lambda t,e,tb: failures.append(e)
     app = r.App(root, store)
     root.update()
+    dialog = app.open_proxy()
+    dialog.values["enabled"].set(True)
+    dialog.update_form()
+    dialog.apply()
+    assert dialog.error.winfo_ismapped() and "proxy" not in app.state
+    dialog.values["host"].set("localhost")
+    dialog.values["port"].set("65536")
+    dialog.apply()
+    assert "65535" in dialog.error.cget("text") and "proxy" not in app.state
+    dialog.win.destroy()
+    assert "proxy" not in app.state
+    dialog = app.open_proxy()
+    dialog.values["enabled"].set(True)
+    dialog.values["authenticate"].set(True)
+    dialog.update_form()
+    dialog.values["host"].set("localhost")
+    dialog.values["username"].set("u")
+    dialog.values["password"].set("local-proxy-test-password")
+    assert dialog.entries["password"].cget("show") == "•"
+    dialog.apply()
+    assert app.proxy_button.cget("text") == "Proxy ativo"
+    assert "local-proxy-test-password" not in store.path.read_text()
+    dialog = app.open_proxy()
+    assert dialog.values["host"].get() == "localhost"
+    dialog.values["enabled"].set(False)
+    dialog.apply()
+    assert app.proxy_button.cget("text") == "Proxy desativado"
     for key in ("headers","body","auth","env","params"):
         app.set_page(key)
         root.update()
@@ -304,6 +438,7 @@ def ui(temp, http):
     app.close()
     assert "test-local-secret" not in store.path.read_text()
     stored = r.Workspace(temp/"data")
+    assert stored.state["proxy"]["password"] == "local-proxy-test-password"
     assert r.path_for(stored.state, selected)[-1]["name"] == "Renomeada"
     assert r.path_for(stored.state, selected)[-1]["auth"]["token"] == "test-local-secret"
     stored.close()
@@ -316,6 +451,7 @@ with tempfile.TemporaryDirectory(dir=BASE/"work") as tmp:
     http, https = start(False,temp), start(True,temp)
     try:
         core(temp, http, https)
+        check_proxy(temp, http, https)
         ui(temp, http)
     finally:
         for server in (http, https):

@@ -11,6 +11,7 @@ import codecs
 import copy
 import csv
 import http.client
+import ipaddress
 import io
 import json
 import os
@@ -176,6 +177,8 @@ def valid_rows(rows, flag):
 
 def validate(state, fragment=False):
     need(isinstance(state, dict) and state.get("version") == 1, "Versão de arquivo incompatível.")
+    if not fragment and "proxy" in state:
+        configured_proxy(state["proxy"])
     roots, envs = state.get("roots"), state.get("environments")
     need(isinstance(roots, list) and isinstance(envs, list), "Estrutura de arquivo inválida.")
     ids = set()
@@ -403,6 +406,77 @@ class Variables:
         return "".join(chunks)
 
 
+PROXY_DEFAULTS = {"enabled": False, "host": "", "port": "8080", "authenticate": False,
+                  "username": "", "password": "", "bypass": ""}
+
+
+class ProxyInputError(ValueError):
+    def __init__(self, field_name, message):
+        super().__init__(message)
+        self.field_name = field_name
+
+
+def proxy_hostname(value):
+    if re.search(r"[\s\x00-\x1f\x7f/@\\?#]", value):
+        raise ValueError("Host inválido")
+    if value.startswith("[") and value.endswith("]"):
+        return str(ipaddress.IPv6Address(value[1:-1]))
+    if ":" in value:
+        return str(ipaddress.IPv6Address(value))
+    host = value.rstrip(".").encode("idna").decode("ascii").lower()
+    if len(host) > 253 or not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", part)
+                                  for part in host.split(".")):
+        raise ValueError("Host inválido")
+    return host
+
+
+@dataclass(frozen=True)
+class Proxy:
+    host: str
+    port: int
+    authorization: str = field(repr=False)
+    bypass: tuple
+
+    def bypasses(self, host):
+        host = host.rstrip(".").lower()
+        if ":" in host:
+            host = str(ipaddress.IPv6Address(host))
+        return any(host.endswith(pattern[1:]) if pattern.startswith("*.") else host == pattern
+                   for pattern in self.bypass)
+
+
+def configured_proxy(settings):
+    need(isinstance(settings, dict) and all(isinstance(settings.get(k), type(v))
+         for k, v in PROXY_DEFAULTS.items()), "Configuração de proxy inválida.")
+    if not settings["enabled"]:
+        return None
+    try:
+        host = proxy_hostname(settings["host"].strip())
+    except (UnicodeError, ValueError):
+        raise ProxyInputError("host", "Informe o nome ou IP do servidor, sem protocolo nem porta.") from None
+    port = settings["port"].strip()
+    if not re.fullmatch(r"[0-9]{1,5}", port) or not 1 <= int(port) <= 65535:
+        raise ProxyInputError("port", "Informe uma porta entre 1 e 65535.")
+    patterns = []
+    for item in settings["bypass"].split(","):
+        item = item.strip()
+        if item:
+            wildcard = item.startswith("*.")
+            try:
+                normalized = proxy_hostname(item.removeprefix("*."))
+            except (UnicodeError, ValueError):
+                raise ProxyInputError("bypass", "Use nomes ou IPs separados por vírgula, como localhost, *.empresa.com.") from None
+            patterns.append(("*." if wildcard else "") + normalized)
+    auth = ""
+    if settings["authenticate"]:
+        user = settings["username"]
+        if not user.strip() or ":" in user:
+            raise ProxyInputError("username", "Informe um usuário sem dois-pontos.")
+        pair = (user + ":" + settings["password"]).encode("utf-8")
+        auth = "Basic " + base64.b64encode(pair).decode("ascii")
+    return Proxy(host, int(port), auth, tuple(patterns))
+
+
 @dataclass
 class Prepared:
     method: str
@@ -413,6 +487,7 @@ class Prepared:
     headers: list
     body: bytes | None
     file: str
+    proxy: Proxy | None = None
 
 
 def prepare(state, path):
@@ -489,7 +564,12 @@ def prepare(state, path):
     if method == "CONNECT" and "host" not in names:
         headers.append(("Host", target))
     need("transfer-encoding" not in names, f"O {APP} calcula o enquadramento do corpo. Remova Transfer-Encoding.")
-    return Prepared(method, parts.scheme, host, port, target, headers, body, file)
+    proxy = configured_proxy(state.get("proxy", PROXY_DEFAULTS))
+    if proxy and "proxy-authorization" in names:
+        raise ValueError("Use a autenticação em Proxy e remova o cabeçalho Proxy-Authorization da requisição.")
+    if proxy and proxy.bypasses(host):
+        proxy = None
+    return Prepared(method, parts.scheme, host, port, target, headers, body, file, proxy)
 
 
 @dataclass
@@ -527,20 +607,35 @@ def perform(req, job):
     conn = None
     upload = None
     try:
+        endpoint = (req.proxy.host, req.proxy.port) if req.proxy else (req.host, req.port)
         if req.scheme == "https":
-            conn = http.client.HTTPSConnection(req.host, req.port, timeout=HTTP_TIMEOUT,
+            conn = http.client.HTTPSConnection(*endpoint, timeout=HTTP_TIMEOUT,
                                                 context=ssl.create_default_context())
         else:
-            conn = http.client.HTTPConnection(req.host, req.port, timeout=HTTP_TIMEOUT)
+            conn = http.client.HTTPConnection(*endpoint, timeout=HTTP_TIMEOUT)
         job.connection = conn
         job.check()
+        target = req.target
+        headers = req.headers
+        if req.proxy:
+            authority = f"[{req.host}]" if ":" in req.host else req.host
+            proxy_headers = {"Proxy-Authorization": req.proxy.authorization} if req.proxy.authorization else {}
+            if req.scheme == "https" or req.method == "CONNECT":
+                destination_port = req.port or (443 if req.scheme == "https" else 80)
+                proxy_headers["Host"] = f"{authority}:{destination_port}"
+                conn.set_tunnel(req.host, destination_port, headers=proxy_headers)
+            else:
+                if req.port is not None:
+                    authority += f":{req.port}"
+                target = f"http://{authority}{target}"
+                headers = [*headers, *proxy_headers.items()]
         upload = open(req.file, "rb") if req.file else None
         size = os.fstat(upload.fileno()).st_size if upload else len(req.body or b"")
         lengths = [v for k, v in req.headers if k.lower() == "content-length"]
         need(not lengths or lengths == [str(size)], "Content-Length deve corresponder ao tamanho do corpo.")
         names = {k.lower() for k, _ in req.headers}
-        conn.putrequest(req.method, req.target, skip_host="host" in names, skip_accept_encoding="accept-encoding" in names)
-        for k, v in req.headers:
+        conn.putrequest(req.method, target, skip_host="host" in names, skip_accept_encoding="accept-encoding" in names)
+        for k, v in headers:
             conn.putheader(k, v)
         if not lengths and (req.body is not None or upload or req.method in ("POST", "PUT", "PATCH")):
             conn.putheader("Content-Length", str(size))
@@ -570,6 +665,8 @@ def perform(req, job):
                          time.perf_counter() - start, len(data) > PREVIEW_LIMIT)
     except Exception as exc:
         msg = "Requisição cancelada." if job.cancelled.is_set() else str(exc)
+        if req.proxy and "Tunnel connection failed: 407" in msg:
+            msg = "HTTP 407 · O proxy exige autenticação. Confira o usuário e a senha em Proxy."
         return Reply(error=msg, elapsed=time.perf_counter() - start)
     finally:
         if upload:
@@ -1158,6 +1255,9 @@ class App:
         self.crumb = label(self.context, "", 9, Theme.muted)
         self.crumb.grid(row=0, column=0, sticky="ew")
         label(self.context, "", 9, Theme.muted, textvariable=self.status).grid(row=0, column=1, padx=(10, 0))
+        self.proxy_button = button(self.context, "", self.open_proxy)
+        self.proxy_button.grid(row=0, column=2, padx=(14, 0))
+        self.refresh_proxy()
         self.content = frame(self.main, Theme.bg)
         self.content.grid(row=1, column=0, sticky="nsew", padx=14, pady=14)
         self.refresh_tree()
@@ -1201,6 +1301,13 @@ class App:
     def short_save(self):
         self.save(notify=True)
         return "break"
+
+    def refresh_proxy(self):
+        enabled = self.state.get("proxy", PROXY_DEFAULTS)["enabled"]
+        self.proxy_button.configure(text="Proxy ativo" if enabled else "Proxy desativado")
+
+    def open_proxy(self):
+        return ProxyWindow(self)
 
     def close(self):
         if self.dirty and not self.save(notify=True):
@@ -1821,6 +1928,105 @@ class App:
             self.env_window.lift()
             return
         self.env_window = EnvironmentWindow(self, selected).win
+
+
+class ProxyWindow:
+    def __init__(self, app):
+        self.app = app
+        self.win = modal(app.root, f"Proxy · {APP}")
+        self.win.resizable(False, False)
+        current = app.state.get("proxy", PROXY_DEFAULTS)
+        self.values = {}
+        self.entries = {}
+        for key, value in current.items():
+            var_type = tk.BooleanVar if isinstance(value, bool) else tk.StringVar
+            self.values[key] = var_type(self.win, value=value)
+
+        body = frame(self.win, padx=22, pady=16)
+        body.pack(fill="both", expand=True)
+        label(body, "Proxy de rede", 16, bold=True).pack(anchor="w")
+        label(body, "Conexão usada pelas requisições deste espaço de trabalho.", 10,
+              Theme.muted).pack(anchor="w", pady=(3, 14))
+        toggle = ttk.Checkbutton(body, text="Usar um proxy HTTP", variable=self.values["enabled"],
+                                 command=self.update_form)
+        toggle.pack(anchor="w")
+        self.details = frame(body)
+        self.details.pack(fill="x", pady=(12, 0))
+        self.details.columnconfigure(0, weight=1)
+        self.add_field(self.details, "host", "Servidor", 0, 0, width=30)
+        self.add_field(self.details, "port", "Porta", 0, 1, width=8)
+        self.add_field(self.details, "bypass", "Conexão direta para (opcional)", 1, 0, span=2)
+        label(self.details, "Separe os destinos por vírgula. Ex.: localhost, *.empresa.com", 9,
+              Theme.muted).grid(row=2, column=0, columnspan=2, sticky="w")
+        self.auth_toggle = ttk.Checkbutton(self.details, text="Usar autenticação Basic",
+                                          variable=self.values["authenticate"], command=self.update_form)
+        self.auth_toggle.grid(row=3, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.credentials = frame(self.details)
+        self.credentials.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(7, 0))
+        for col, (key, caption) in enumerate((("username", "Usuário"), ("password", "Senha"))):
+            self.credentials.columnconfigure(col, weight=1, uniform="auth")
+            self.add_field(self.credentials, key, caption, 0, col, width=16)
+        self.error = label(body, "", 10, Theme.danger, wraplength=390, justify="left")
+        frame(self.win, Theme.line, height=1).pack(fill="x")
+        actions = frame(self.win, padx=22, pady=12)
+        actions.pack(fill="x")
+        button(actions, "Salvar", self.apply, "Primary.TButton").pack(side="right")
+        button(actions, "Cancelar", self.win.destroy, "Quiet.TButton").pack(side="right", padx=(0, 8))
+        self.update_form(initial=True)
+        toggle.focus_set()
+
+    def add_field(self, parent, key, caption, row_index, col, *, span=1, width=20):
+        box = frame(parent)
+        box.grid(row=row_index, column=col, columnspan=span, sticky="ew",
+                 padx=(10 if col else 0, 0), pady=(0, 5))
+        label(box, caption, 10, bold=True).pack(anchor="w", pady=(0, 3))
+        widget = ttk.Entry(box, textvariable=self.values[key], width=width,
+                           show="•" if key == "password" else "")
+        widget.pack(fill="x")
+        self.entries[key] = widget
+
+    def fit(self, initial=False):
+        self.win.update_idletasks()
+        w = max(445, self.win.winfo_reqwidth())
+        h = self.win.winfo_reqheight()
+        if initial:
+            place_window(self.win, self.app.root, w, h)
+        else:
+            top = max(0, min(self.win.winfo_y(), self.win.winfo_screenheight()-h-70))
+            self.win.geometry(f"{w}x{h}+{max(0,self.win.winfo_x())}+{top}")
+
+    def update_form(self, initial=False):
+        if self.values["enabled"].get():
+            self.details.pack(fill="x", pady=(12, 0))
+        else:
+            self.details.pack_forget()
+        if self.values["authenticate"].get():
+            self.credentials.grid()
+        else:
+            self.credentials.grid_remove()
+        self.error.pack_forget()
+        self.fit(initial)
+
+    def apply(self):
+        draft = {key: var.get() for key, var in self.values.items()}
+        try:
+            configured_proxy(draft)
+        except ProxyInputError as exc:
+            self.error.configure(text=str(exc))
+            self.error.pack(anchor="w", pady=(8, 0))
+            self.fit()
+            self.entries[exc.field_name].focus_set()
+            return
+        previous = self.app.state.get("proxy")
+        self.app.state["proxy"] = draft
+        if not self.app.save(notify=True):
+            if previous is None:
+                del self.app.state["proxy"]
+            else:
+                self.app.state["proxy"] = previous
+            return
+        self.app.refresh_proxy()
+        self.win.destroy()
 
 
 class EnvironmentWindow:

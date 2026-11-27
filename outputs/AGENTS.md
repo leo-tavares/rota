@@ -14,6 +14,7 @@ Na área de desenvolvimento, o script e este guia ficam em `outputs/`. O diretó
 | `make_node`, `env_for`, `auth_for`, `Variables` | Hierarquia de coleções, pastas e requisições, herança e expansão de `{{variavel}}`. |
 | `Workspace`, `validate`, `share_package`, `import_package` | Persistência local, validação e intercâmbio JSON versão 1. |
 | `prepare`, `perform`, `Job`, `Reply` | Montagem da requisição, transporte HTTP/HTTPS, cancelamento e captura dos bytes da resposta. |
+| `ProxyWindow`, `configured_proxy`, `Proxy` | Rascunho da configuração, validação e escolha entre proxy HTTP e conexão direta. |
 | `body_view`, `BodyView`, `VIEW_MODES` | Detecção de formato e preparação de texto, tabela, árvore ou imagem. Funcionam sem criar janelas. |
 | `App.draw_response`, `response_table` | Seletor de visualização, widgets e cópia. Todo acesso a Tk ocorre na thread da interface. |
 
@@ -31,6 +32,8 @@ Na área de desenvolvimento, o script e este guia ficam em `outputs/`. O diretó
 O espaço de trabalho usa `%LOCALAPPDATA%/RelayHTTP/workspace.json`, protegido pela DPAPI da conta Windows. A gravação é atômica. Os identificadores de dados `relay-dpapi` e `relay-http` preservam a compatibilidade com espaços de trabalho e coleções do Relay. Os arquivos de compartilhamento são JSON portável. Preserve as referências herdadas ao exportar uma subárvore, a opção de incluir segredos e a remarcação de identificadores durante a importação. A URL e o corpo textual são exportados como escritos.
 
 As respostas recentes ficam em memória. Mudanças de visualização não devem alterar os bytes capturados, as requisições salvas ou os arquivos de compartilhamento.
+
+A chave opcional `proxy` é local ao espaço de trabalho. Sua ausência indica conexão direta. Preserve o isolamento das credenciais do proxy e da API, inclusive em CONNECT, e a exclusão das preferências de rede ao compartilhar ou importar coleções.
 
 ## Validar no Windows
 
