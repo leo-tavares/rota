@@ -4,6 +4,8 @@
 
 Cliente HTTP para desenvolvedores, feito em Python e Tkinter para Windows 11.
 
+O Rota nasceu para tornar os testes de API mais simples. Uma ferramenta leve, direta e focada no que realmente importa.
+
 ![O Rota recebe 20 produtos do DummyJSON e mostra o arraste da barra vertical até o fim da resposta JSON.](outputs/media/rota-rolagem-json.gif)
 
 ## Executar
