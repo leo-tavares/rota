@@ -75,6 +75,8 @@ class Theme:
     nav_sel = "#30485B"
     nav_text = "#ECF3F6"
     nav_muted = "#B4C6D2"
+    nav_scroll = "#698192"
+    scroll = "#7B8C97"
     mint = "#77DEC1"
     bg = "#F4F6F8"
     card = "#FFFFFF"
@@ -915,6 +917,63 @@ def render_body(reply, pretty=True):
     return "\n\n".join(filter(None, (view.text, view.note)))
 
 
+def scrollbar_thumb(root, orientation, scale, surface, color, thickness):
+    """Cria uma cápsula que o ttk alonga apenas no centro."""
+    lane = round(16 * scale)
+    length = round(28 * scale)
+    radius = thickness * scale / 2
+    inset = 2 * scale
+    vertical = orientation == "Vertical"
+    width, height = (lane, length) if vertical else (length, lane)
+    image = tk.PhotoImage(master=root, width=width, height=height)
+    background = tuple(c // 257 for c in root.winfo_rgb(surface))
+    foreground = tuple(c // 257 for c in root.winfo_rgb(color))
+    rows = []
+    for y in range(height):
+        pixels = []
+        for x in range(width):
+            across, along = (x + .5, y + .5) if vertical else (y + .5, x + .5)
+            cap = max(inset + radius - along, along - (length - inset - radius), 0)
+            distance = ((across - lane / 2) ** 2 + cap ** 2) ** .5
+            coverage = min(1, max(0, radius + .5 - distance))
+            rgb = tuple(round(b + (f - b) * coverage) for b, f in zip(background, foreground))
+            pixels.append("#%02x%02x%02x" % rgb)
+        rows.append("{" + " ".join(pixels) + "}")
+    image.put(" ".join(rows))
+    return image
+
+
+def configure_scrollbars(root, style):
+    if hasattr(root, "_scrollbar_images"):
+        return
+    # As imagens precisam viver tanto quanto os estilos registrados no interpretador Tcl.
+    images = root._scrollbar_images = []
+    scale = max(1, root.winfo_fpixels("1i") / 96)
+    palettes = (
+        ("", Theme.card, Theme.scroll, Theme.muted, Theme.accent),
+        ("Nav.", Theme.nav, Theme.nav_scroll, Theme.nav_muted, Theme.mint),
+        ("Panel.", Theme.bg, Theme.scroll, Theme.muted, Theme.accent),
+    )
+    for prefix, surface, idle, hover, pressed in palettes:
+        track = tk.PhotoImage(master=root, width=1, height=1)
+        track.put(surface, to=(0, 0))
+        images.append(track)
+        trough = f"Rota.{prefix}Scrollbar.trough"
+        style.element_create(trough, "image", track, sticky="nsew")
+        for direction in ("Vertical", "Horizontal"):
+            states = [scrollbar_thumb(root, direction, scale, surface, color, thickness)
+                      for color, thickness in ((idle, 6), (hover, 8), (pressed, 8))]
+            images.extend(states)
+            thumb = f"Rota.{prefix}{direction}.Scrollbar.thumb"
+            cap = round(8 * scale)
+            border = (0, cap, 0, cap) if direction == "Vertical" else (cap, 0, cap, 0)
+            style.element_create(thumb, "image", states[0], ("pressed", states[2]), ("active", states[1]),
+                                 border=border, sticky="nsew")
+            style.layout(f"{prefix}{direction}.TScrollbar", [
+                (trough, {"sticky": "nsew", "children": [(thumb, {"sticky": "nsew"})]})
+            ])
+
+
 def configure_styles(root):
     t = Theme
     style = ttk.Style(root)
@@ -962,8 +1021,7 @@ def configure_styles(root):
     style.map("Treeview", background=[("selected", t.accent_soft)], foreground=[("selected", t.accent)])
     style.configure("Treeview.Heading", background=t.bg, foreground=t.muted,
                     font=(t.font, 9, "bold"), padding=5, relief="flat")
-    style.configure("Vertical.TScrollbar", arrowsize=12, background=t.border,
-                    troughcolor=t.bg, borderwidth=0)
+    configure_scrollbars(root, style)
 
 
 def frame(parent, bg=None, **kwargs):
@@ -1358,9 +1416,9 @@ class App:
         self.tree = ttk.Treeview(tree_wrap, show="tree", style="Nav.Treeview", selectmode="browse",
                                  takefocus=True, height=4)
         self.tree.grid(row=0, column=0, sticky="nsew")
-        vs = ttk.Scrollbar(tree_wrap, command=self.tree.yview)
+        vs = ttk.Scrollbar(tree_wrap, style="Nav.Vertical.TScrollbar", command=self.tree.yview)
         vs.grid(row=0, column=1, sticky="ns")
-        hs = ttk.Scrollbar(tree_wrap, orient="horizontal", command=self.tree.xview)
+        hs = ttk.Scrollbar(tree_wrap, orient="horizontal", style="Nav.Horizontal.TScrollbar", command=self.tree.xview)
         hs.grid(row=1, column=0, sticky="ew")
         self.tree.configure(yscrollcommand=auto_scroll(vs), xscrollcommand=auto_scroll(hs))
         self.tree_font = tkfont.Font(root=self.root, font=(t.font, 10))
@@ -1655,14 +1713,18 @@ class App:
         label(bar, f"{count} " + ("item" if count == 1 else "itens"), 10, Theme.muted).pack(side="left")
         button(bar, "+ Requisição", lambda: self.new("request")).pack(side="right")
         button(bar, "+ Pasta", lambda: self.new("folder"), "Quiet.TButton").pack(side="right", padx=5)
-        listing = ttk.Treeview(area, columns=("name", "type"), show="headings", selectmode="browse", height=3)
+        panel = frame(area)
+        panel.pack(fill="both", expand=True)
+        panel.columnconfigure(0, weight=1)
+        panel.rowconfigure(0, weight=1)
+        listing = ttk.Treeview(panel, columns=("name", "type"), show="headings", selectmode="browse", height=3)
         for k, text, width in (("name", "Nome", 280), ("type", "Tipo / método", 130)):
             listing.heading(k, text=text, anchor="w")
             listing.column(k, anchor="w", width=width, minwidth=50)
-        scroll = ttk.Scrollbar(area, command=listing.yview)
-        listing.configure(yscrollcommand=scroll.set)
-        scroll.pack(side="right", fill="y")
-        listing.pack(fill="both", expand=True)
+        scroll = ttk.Scrollbar(panel, command=listing.yview)
+        listing.grid(row=0, column=0, sticky="nsew")
+        scroll.grid(row=0, column=1, sticky="ns")
+        listing.configure(yscrollcommand=auto_scroll(scroll))
         for child in n["children"]:
             listing.insert("", "end", iid=child["id"], values=(child["name"], child.get("method", TYPES[child["kind"]])))
         def open_item(_):
@@ -2043,11 +2105,18 @@ class EnvironmentWindow:
         side = frame(self.win, Theme.bg, padx=12, pady=14, width=190)
         side.grid(row=0, column=0, sticky="nsew")
         label(side, "Ambientes", 14, bold=True).pack(anchor="w", pady=(0, 9))
-        self.list = tk.Listbox(side, width=18, exportselection=False, bg=Theme.bg, fg=Theme.ink,
+        list_area = frame(side, Theme.bg)
+        list_area.pack(fill="both", expand=True)
+        list_area.columnconfigure(0, weight=1)
+        list_area.rowconfigure(0, weight=1)
+        self.list = tk.Listbox(list_area, width=18, exportselection=False, bg=Theme.bg, fg=Theme.ink,
                               selectbackground=Theme.accent_soft, selectforeground=Theme.accent,
                               relief="flat", bd=0, highlightthickness=0, activestyle="none",
                               font=(Theme.font, 11))
-        self.list.pack(fill="both", expand=True)
+        self.list.grid(row=0, column=0, sticky="nsew")
+        scroll = ttk.Scrollbar(list_area, style="Panel.Vertical.TScrollbar", command=self.list.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
+        self.list.configure(yscrollcommand=auto_scroll(scroll))
         self.list.bind("<<ListboxSelect>>", lambda _: self.selected())
         button(side, "+ Ambiente", self.add).pack(fill="x", pady=(9, 0))
         self.area = frame(self.win, padx=16, pady=14)

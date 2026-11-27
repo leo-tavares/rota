@@ -10,7 +10,7 @@ Na área de desenvolvimento, o script e este guia ficam em `outputs/`. O diretó
 
 | Onde alterar | Responsabilidade |
 | --- | --- |
-| `Theme`, `configure_styles` | Paleta, tipografia e estilos Tk/ttk. Reutilize os componentes visuais existentes. |
+| `Theme`, `configure_styles`, `configure_scrollbars` | Paleta, tipografia e estilos Tk/ttk, incluindo as barras de rolagem. Reutilize os componentes visuais existentes. |
 | `make_node`, `env_for`, `auth_for`, `Variables` | Hierarquia de coleções, pastas e requisições, herança e expansão de `{{variavel}}`. |
 | `Workspace`, `validate`, `share_package`, `import_package` | Persistência local, validação e intercâmbio JSON versão 1. |
 | `prepare`, `perform`, `Job`, `Reply` | Montagem da requisição, transporte HTTP/HTTPS, cancelamento e captura dos bytes da resposta. |
@@ -41,10 +41,11 @@ Execute estes comandos na pasta que contém `outputs/` e `work/`.
 
 ```powershell
 py -B work/check_views.py
+py -B work/check_scrollbars.py
 py -B work/check_rota.py
 ```
 
-O primeiro comando testa formatos, charsets, compressão e limites sem rede. O segundo usa HTTP e HTTPS em loopback, um espaço de trabalho temporário e uma janela Tk para testar o fluxo de envio, visualização, compartilhamento e persistência. O teste de TLS usa o OpenSSL do Git for Windows no caminho configurado em `work/check_rota.py`.
+Os dois primeiros comandos verificam os formatos de resposta e a interação com as barras de rolagem sem rede. O último usa HTTP e HTTPS em loopback, um espaço de trabalho temporário e uma janela Tk para testar o fluxo de envio, visualização, compartilhamento e persistência. O teste de TLS usa o OpenSSL do Git for Windows no caminho configurado em `work/check_rota.py`.
 
 Para verificar uma mudança de interface, envie uma requisição pelo botão **Enviar**, alterne entre **Corpo** e **Cabeçalhos**, escolha um formato manual e confira **Copiar**. Para um novo formato, cubra também um exemplo inválido ou truncado.
 
