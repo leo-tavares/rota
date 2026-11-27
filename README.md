@@ -4,7 +4,7 @@
 
 Cliente HTTP para desenvolvedores, feito em Python e Tkinter para Windows 11.
 
-![O Rota envia um GET ao DummyJSON com limite de dois produtos e exibe a resposta 200 OK com os títulos e preços em JSON.](outputs/media/rota-dummyjson.gif)
+![O Rota recebe 20 produtos do DummyJSON e mostra o arraste da barra vertical até o fim da resposta JSON.](outputs/media/rota-rolagem-json.gif)
 
 ## Executar
 
